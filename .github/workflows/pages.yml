@@ -1,4 +1,4 @@
-name: Build & Deploy GitHub Pages
+name: Build & Deploy GitHub Pages (Notebook -> HTML)
 
 on:
   push:
@@ -30,33 +30,38 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # aseguramos nbconvert para exportar el notebook a HTML
           pip install jupyter nbconvert
 
-      - name: Execute notebook (generate results into docs/)
+      - name: Ensure docs/ exists
+        run: mkdir -p docs
+
+      # Ejecuta el notebook y lo exporta como docs/index.html (home del sitio)
+      - name: Execute & export notebook to HTML (as docs/index.html)
         run: |
-          # ejecuta el notebook de la raíz y guarda una copia ejecutada en docs/assets/downloads
           jupyter nbconvert \
-            --to notebook \
             --execute bias-mitigation.ipynb \
             --ExecutePreprocessor.timeout=1200 \
-            --output executed.ipynb \
-            --output-dir docs/assets/downloads
-          # versión HTML descargable
-          jupyter nbconvert \
-            --to html docs/assets/downloads/executed.ipynb \
-            --output bias_mitigation_executed.html \
-            --output-dir docs/assets/downloads
+            --to html \
+            --output index.html \
+            --output-dir docs
+          # Si prefieres ocultar el código en la página, añade:  --no-input
+
+      # Dejar también la versión ejecutada para descarga
+      # - name: Save executed notebook for download (optional)
+      #   run: |
+      #     mkdir -p docs/assets/downloads
+      #     jupyter nbconvert \
+      #       --to notebook \
+      #       --execute bias-mitigation.ipynb \
+      #       --ExecutePreprocessor.timeout=1200 \
+      #       --output executed.ipynb \
+      #       --output-dir docs/assets/downloads
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Convert Markdown to HTML (index.md -> index.html)
-        run: |
-          sudo apt-get update && sudo apt-get install -y pandoc
-          pandoc docs/index.md -o docs/index.html
-
-
-      - name: Upload artifact (docs/ = site root)
+      - name: Upload artifact (publish docs/ as site root)
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs
