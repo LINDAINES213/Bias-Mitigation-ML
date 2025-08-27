@@ -31,13 +31,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           # aseguramos nbconvert para exportar el notebook a HTML
-          pip install jupyter nbconvert
+          pip install jupyter nbconvert nbclient
 
       - name: Ensure docs/ exists
         run: mkdir -p docs
 
       # Ejecuta el notebook y lo exporta como docs/index.html (home del sitio)
       - name: Execute & export notebook to HTML (respect hide tags)
+        env:
+          MPLBACKEND: Agg
         run: |
           # Config para ocultar por tags
           cat > nbconvert_config.json << 'EOF'
