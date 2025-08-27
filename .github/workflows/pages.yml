@@ -37,15 +37,31 @@ jobs:
         run: mkdir -p docs
 
       # Ejecuta el notebook y lo exporta como docs/index.html (home del sitio)
-      - name: Execute & export notebook to HTML (as docs/index.html)
+      - name: Execute & export notebook to HTML (respect hide tags)
         run: |
+          # Config para ocultar por tags
+          cat > nbconvert_config.json << 'EOF'
+          {
+            "TagRemovePreprocessor": {
+              "enabled": true,
+              "remove_input_tags": ["hide-input", "hide_input", "remove-input"],
+              "remove_all_outputs_tags": ["hide-output", "hide_output", "remove-output"],
+              "remove_cell_tags": ["hide-cell", "remove-cell"]
+            }
+          }
+          EOF
+
           jupyter nbconvert \
             --execute bias-mitigation.ipynb \
             --ExecutePreprocessor.timeout=1200 \
             --to html \
             --output index.html \
-            --output-dir docs
-          # Si prefieres ocultar el código en la página, añade:  --no-input
+            --output-dir docs \
+            --config nbconvert_config.json
+      - name: Copy site assets (logo)
+        run: |
+          mkdir -p docs/assets
+          cp -f LogoUVG.png docs/assets/LogoUVG.png
 
       # Dejar también la versión ejecutada para descarga
       # - name: Save executed notebook for download (optional)
