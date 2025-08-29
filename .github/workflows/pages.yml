@@ -96,11 +96,10 @@ jobs:
           import html, pandas as pd
 
           root = Path("docs")
-          index = root / "index.html"
+          home = root / "index.html"
           fig_dir = root / "assets" / "figures"
           dl_dir  = root / "assets" / "downloads"
 
-          # ---- Helpers ----
           def write_page(path: Path, title: str, body_html: str):
               path.parent.mkdir(parents=True, exist_ok=True)
               base = f"""<!doctype html>
@@ -124,59 +123,68 @@ jobs:
           """
               path.write_text(base, encoding="utf-8")
 
-          # ---- 3.1 /figures/ ----
+          # --- /figures/ ---
           figs = sorted([p for p in fig_dir.glob("*") if p.suffix.lower() in {".png",".jpg",".jpeg",".gif",".svg",".webp"}])
-          fig_cards = []
+          cards = []
           for p in figs:
-              rel = "../" + p.relative_to(root).as_posix()
+              rel = "../" + p.relative_to(root).as_posix()   # relativo desde /figures/
               name = html.escape(p.name)
-              fig_cards.append(f"<div class='card'><a href='{rel}' target='_blank' rel='noopener'><img src='{rel}' alt='{name}'></a><div class='cap'>{name}</div></div>")
-          body = f"<h1>Figures</h1><p>Auto-generated gallery from <code>docs/assets/figures/</code>.</p>"
-          body += f"<div class='grid'>{''.join(fig_cards) if fig_cards else '<i>No figures found.</i>'}</div>"
+              cards.append(f"<div class='card'><a href='{rel}' target='_blank' rel='noopener'><img src='{rel}' alt='{name}'></a><div class='cap'>{name}</div></div>")
+          body = "<h1>Figures</h1><p>Auto-generated gallery from <code>docs/assets/figures/</code>.</p>"
+          body += f"<div class='grid'>{''.join(cards) if cards else '<i>No figures found.</i>'}</div>"
           write_page(root / "figures" / "index.html", "Figures", body)
 
-          # ---- 3.2 /reports/ ---- (HTML files)
-          htmls = sorted([p for p in dl_dir.glob("*.html")])
+          # --- /reports/ --- (HTML files)
+          htmls = sorted([p for p in (dl_dir.glob("*.html"))])
           items = []
           for p in htmls:
-              # Copia cada HTML a /reports/ con el mismo nombre
               dest = root / "reports" / p.name
               dest.parent.mkdir(parents=True, exist_ok=True)
               dest.write_text(p.read_text(encoding="utf-8"), encoding="utf-8")
-              items.append(f"<li><a href='{dest.relative_to(root).as_posix()}' target='_blank' rel='noopener'>{html.escape(p.name)}</a></li>")
+              items.append(f"<li><a href='{p.name}' target='_blank' rel='noopener'>{html.escape(p.name)}</a></li>")
           body = "<h1>HTML Reports</h1><p>Individual HTML reports exported by the notebook.</p>"
           body += "<ul>" + ("".join(items) if items else "<i>No HTML reports found.</i>") + "</ul>"
           write_page(root / "reports" / "index.html", "Reports", body)
 
-          # ---- 3.3 /data/ ---- (CSV -> table page per file)
+          # --- /data/ --- (CSV -> table page per file)
           csvs = sorted([p for p in dl_dir.glob("*.csv")])
-          index_items = []
+          idx_items = []
           for p in csvs:
               df = pd.read_csv(p)
               table_html = df.to_html(index=False)
               page = root / "data" / (p.stem + ".html")
-              write_page(page, p.stem, f"<h1>{html.escape(p.name)}</h1><p>Source: <code>{p.relative_to(root).as_posix()}</code></p><hr>{table_html}")
-              index_items.append(f"<li><a href='{page.relative_to(root).as_posix()}'>{html.escape(p.name)}</a> &middot; rows={len(df):,} cols={df.shape[1]}</li>")
+              write_page(page, p.stem, f"<h1>{html.escape(p.name)}</h1><p>Source: <code>assets/downloads/{html.escape(p.name)}</code></p><hr>{table_html}")
+              idx_items.append(f"<li><a href='{page.name}'>{html.escape(p.name)}</a> &middot; rows={len(df):,} cols={df.shape[1]}</li>")
           body = "<h1>Data (CSV)</h1><p>Each CSV is rendered as an HTML table.</p>"
-          body += "<ul>" + ("".join(index_items) if index_items else "<i>No CSV files found.</i>") + "</ul>"
+          body += "<ul>" + ("".join(idx_items) if idx_items else "<i>No CSV files found.</i>") + "</ul>"
           write_page(root / "data" / "index.html", "Data", body)
 
-          # ---- 3.4 Añade links en la home (si existe) ----
-          home = index
           if home.exists():
               html_text = home.read_text(encoding="utf-8")
-              jump = """
-          <hr>
-          <h2>Site sections</h2>
-          <ul>
-            <li><a href="figures/">Figures</a> – gallery of fairness/SHAP images</li>
-            <li><a href="reports/">Reports</a> – standalone HTML reports</li>
-            <li><a href="data/">Data</a> – CSV files rendered as tables</li>
-          </ul>
+              top = """
+          <style>
+          .site-sections{border:1px solid #e8e8e8;border-radius:10px;padding:12px;margin:14px 0;background:#fafafa}
+          .site-sections ul{margin:0 0 0 18px}
+          </style>
+          <div class="site-sections">
+            <h2>Site sections</h2>
+            <ul>
+              <li><a href="figures/">Figures</a> – gallery of fairness/SHAP images</li>
+              <li><a href="reports/">Reports</a> – standalone HTML reports</li>
+              <li><a href="data/">Data</a> – CSV files rendered as tables</li>
+            </ul>
+          </div>
           """
               lower = html_text.lower()
-              anchor = lower.rfind("</body>")
-              new_html = html_text[:anchor] + jump + html_text[anchor:] if anchor != -1 else html_text + jump
+              bodystart = lower.find("<body")
+              if bodystart != -1:
+                  gt = lower.find(">", bodystart)
+                  if gt != -1:
+                      new_html = html_text[:gt+1] + top + html_text[gt+1:]
+                  else:
+                      new_html = top + html_text
+              else:
+                  new_html = top + html_text
               home.write_text(new_html, encoding="utf-8")
           print(f"Built sections: figures={len(figs)} | reports={len(htmls)} | csv={len(csvs)}")
           PY
