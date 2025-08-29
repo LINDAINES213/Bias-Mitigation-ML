@@ -59,6 +59,23 @@ jobs:
             --output index.html \
             --output-dir docs \
             --config nbconvert_config.json
+
+      - name: Collect figures for the site
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for f in fairness_plots/*.{png,jpg,jpeg,gif,svg,webp}; do
+            cp -f "$f" docs/assets/figures/ || true
+          done
+      
+      - name: Copy optional downloads
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for f in results/*.{csv,html}; do
+            cp -f "$f" docs/assets/downloads/ || true
+          done || true
+      
       - name: Copy site assets (logo)
         run: |
           mkdir -p docs/assets
@@ -74,6 +91,79 @@ jobs:
       #       --ExecutePreprocessor.timeout=1200 \
       #       --output executed.ipynb \
       #       --output-dir docs/assets/downloads
+
+      - name: Inject figures gallery into index.html
+        run: |
+          python - << 'PY'
+          from pathlib import Path
+          import html
+
+          root = Path("docs")
+          index = root / "index.html"
+          fig_dir = root / "assets" / "figures"
+          dl_dir  = root / "assets" / "downloads"
+
+          figs = sorted([p for p in fig_dir.glob("*") if p.suffix.lower() in {".png",".jpg",".jpeg",".gif",".svg",".webp"}])
+
+          gallery_css = """
+          <style>
+          .gallery-grid {
+            display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+            gap:12px; margin: 8px 0 24px;
+          }
+          .gallery-grid figure {
+            border:1px solid #e8e8e8; border-radius:10px; padding:10px; margin:0;
+          }
+          .gallery-grid img {
+            width:100%; height:auto; display:block;
+          }
+          .gallery-grid figcaption {
+            font-size:.9rem; margin-top:6px; text-align:center; color:#555;
+            word-break: break-word;
+          }
+          .hr-sep { margin: 24px 0; border:0; height:1px; background:#eee; }
+          </style>
+          """
+
+          gallery_html = [gallery_css, "<hr class='hr-sep'>", "<h2>✅ Key results</h2>"]
+          gallery_html.append("<p>This section aggregates fairness comparisons and SHAP/feature-attribution figures exported by the notebook.</p>")
+
+          if figs:
+              gallery_html.append("<div class='gallery-grid'>")
+              for p in figs:
+                  name = html.escape(p.name)
+                  rel  = f"/{p.relative_to(root).as_posix()}"
+                  gallery_html.append(
+                      f"<figure><a href='{rel}' target='_blank' rel='noopener'>"
+                      f"<img src='{rel}' alt='{name}'></a>"
+                      f"<figcaption>{name}</figcaption></figure>"
+                  )
+              gallery_html.append("</div>")
+          else:
+              gallery_html.append("<i>No figures were found in <code>docs/assets/figures/</code>.</i>")
+
+          dls = sorted([p for p in dl_dir.glob("*") if p.is_file()])
+          if dls:
+              gallery_html.append("<h3>Downloads</h3><ul>")
+              for p in dls:
+                  name = html.escape(p.name)
+                  rel  = f"/{p.relative_to(root).as_posix()}"
+                  gallery_html.append(f"<li><a href='{rel}'>{name}</a></li>")
+              gallery_html.append("</ul>")
+
+          inject_block = "\n".join(gallery_html) + "\n"
+
+          html_text = index.read_text(encoding="utf-8")
+          lower = html_text.lower()
+          anchor = lower.rfind("</body>")
+          if anchor != -1:
+              new_html = html_text[:anchor] + inject_block + html_text[anchor:]
+          else:
+              new_html = html_text + inject_block
+
+          index.write_text(new_html, encoding="utf-8")
+          print(f"Injected gallery with {len(figs)} figures.")
+          PY
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
