@@ -48,7 +48,6 @@ jobs:
               "enabled": true,
               "remove_input_tags": ["hide-input", "hide_input", "remove-input"],
               "remove_all_outputs_tags": ["hide-output", "hide_output", "remove-output"],
-              "remove_cell_tags": ["hide-cell", "remove-cell"]
             }
           }
           EOF
