@@ -31,10 +31,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           # aseguramos nbconvert para exportar el notebook a HTML
-          pip install jupyter nbconvert nbclient
+          pip install jupyter nbconvert nbclient pillow
 
       - name: Ensure docs/ exists
         run: mkdir -p docs
+          mkdir -p docs/assets/figures
+          mkdir -p docs/assets/downloads
 
       # Ejecuta el notebook y lo exporta como docs/index.html (home del sitio)
       - name: Execute & export notebook to HTML (respect hide tags)
@@ -132,7 +134,7 @@ jobs:
               gallery_html.append("<div class='gallery-grid'>")
               for p in figs:
                   name = html.escape(p.name)
-                  rel  = f"/{p.relative_to(root).as_posix()}"
+                  rel  = p.relative_to(root).as_posix()
                   gallery_html.append(
                       f"<figure><a href='{rel}' target='_blank' rel='noopener'>"
                       f"<img src='{rel}' alt='{name}'></a>"
@@ -147,7 +149,7 @@ jobs:
               gallery_html.append("<h3>Downloads</h3><ul>")
               for p in dls:
                   name = html.escape(p.name)
-                  rel  = f"/{p.relative_to(root).as_posix()}"
+                  rel  = p.relative_to(root).as_posix()
                   gallery_html.append(f"<li><a href='{rel}'>{name}</a></li>")
               gallery_html.append("</ul>")
 
