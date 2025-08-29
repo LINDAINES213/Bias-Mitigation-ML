@@ -31,14 +31,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           # aseguramos nbconvert para exportar el notebook a HTML
-          pip install jupyter nbconvert nbclient pillow
+          pip install jupyter nbconvert nbclient pillow pandas
 
-      - name: Ensure docs/ exists
+      - name: Ensure required folders exist
         run: mkdir -p docs
           mkdir -p docs/assets/figures
           mkdir -p docs/assets/downloads
 
-      # Ejecuta el notebook y lo exporta como docs/index.html (home del sitio)
+      # Executes notebook and exports it as docs/index.html
       - name: Execute & export notebook to HTML (respect hide tags)
         env:
           MPLBACKEND: Agg
@@ -62,28 +62,23 @@ jobs:
             --output-dir docs \
             --config nbconvert_config.json
 
-      - name: Collect figures for the site
+      - name: Collect figures and downloads for the site
         shell: bash
         run: |
           shopt -s nullglob
           for f in fairness_plots/*.{png,jpg,jpeg,gif,svg,webp}; do
             cp -f "$f" docs/assets/figures/ || true
           done
-      
-      - name: Copy optional downloads
-        shell: bash
-        run: |
-          shopt -s nullglob
           for f in results/*.{csv,html}; do
             cp -f "$f" docs/assets/downloads/ || true
-          done || true
+          done || true          
       
       - name: Copy site assets (logo)
         run: |
           mkdir -p docs/assets
           cp -f LogoUVG.png docs/assets/LogoUVG.png
 
-      # Dejar también la versión ejecutada para descarga
+      # Leave executed version for download
       # - name: Save executed notebook for download (optional)
       #   run: |
       #     mkdir -p docs/assets/downloads
@@ -94,77 +89,96 @@ jobs:
       #       --output executed.ipynb \
       #       --output-dir docs/assets/downloads
 
-      - name: Inject figures gallery into index.html
+      - name: Build sections (figures/, reports/, data/)
         run: |
           python - << 'PY'
           from pathlib import Path
-          import html
+          import html, pandas as pd
 
           root = Path("docs")
           index = root / "index.html"
           fig_dir = root / "assets" / "figures"
           dl_dir  = root / "assets" / "downloads"
 
-          figs = sorted([p for p in fig_dir.glob("*") if p.suffix.lower() in {".png",".jpg",".jpeg",".gif",".svg",".webp"}])
-
-          gallery_css = """
+          # ---- Helpers ----
+          def write_page(path: Path, title: str, body_html: str):
+              path.parent.mkdir(parents=True, exist_ok=True)
+              base = f"""<!doctype html>
+          <meta charset="utf-8">
+          <title>{html.escape(title)}</title>
           <style>
-          .gallery-grid {
-            display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
-            gap:12px; margin: 8px 0 24px;
-          }
-          .gallery-grid figure {
-            border:1px solid #e8e8e8; border-radius:10px; padding:10px; margin:0;
-          }
-          .gallery-grid img {
-            width:100%; height:auto; display:block;
-          }
-          .gallery-grid figcaption {
-            font-size:.9rem; margin-top:6px; text-align:center; color:#555;
-            word-break: break-word;
-          }
-          .hr-sep { margin: 24px 0; border:0; height:1px; background:#eee; }
+          body{{font:16px/1.4 system-ui,Segoe UI,Arial,sans-serif;max-width:1100px;margin:28px auto;padding:0 14px;color:#111}}
+          a{{text-decoration:none}} a:hover{{text-decoration:underline}}
+          h1,h2{{margin:.4em 0}}
+          .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}}
+          .card{{border:1px solid #e8e8e8;border-radius:10px;padding:10px}}
+          .card img{{width:100%;height:auto;display:block}}
+          .card .cap{{font-size:.9rem;margin-top:6px;text-align:center;color:#555;word-break:break-word}}
+          hr{{border:0;height:1px;background:#eee;margin:18px 0}}
+          table{{border-collapse:collapse;width:100%}}
+          th,td{{border:1px solid #ddd;padding:6px 8px}} th{{background:#fafafa;text-align:left}}
+          .topnav{{margin-bottom:14px}} .topnav a{{margin-right:10px}}
           </style>
+          <div class="topnav"><a href="../">Home</a></div>
+          {body_html}
           """
+              path.write_text(base, encoding="utf-8")
 
-          gallery_html = [gallery_css, "<hr class='hr-sep'>", "<h2>✅ Key results</h2>"]
-          gallery_html.append("<p>This section aggregates fairness comparisons and SHAP/feature-attribution figures exported by the notebook.</p>")
+          # ---- 3.1 /figures/ ----
+          figs = sorted([p for p in fig_dir.glob("*") if p.suffix.lower() in {".png",".jpg",".jpeg",".gif",".svg",".webp"}])
+          fig_cards = []
+          for p in figs:
+              rel = "../" + p.relative_to(root).as_posix()
+              name = html.escape(p.name)
+              fig_cards.append(f"<div class='card'><a href='{rel}' target='_blank' rel='noopener'><img src='{rel}' alt='{name}'></a><div class='cap'>{name}</div></div>")
+          body = f"<h1>Figures</h1><p>Auto-generated gallery from <code>docs/assets/figures/</code>.</p>"
+          body += f"<div class='grid'>{''.join(fig_cards) if fig_cards else '<i>No figures found.</i>'}</div>"
+          write_page(root / "figures" / "index.html", "Figures", body)
 
-          if figs:
-              gallery_html.append("<div class='gallery-grid'>")
-              for p in figs:
-                  name = html.escape(p.name)
-                  rel  = p.relative_to(root).as_posix()
-                  gallery_html.append(
-                      f"<figure><a href='{rel}' target='_blank' rel='noopener'>"
-                      f"<img src='{rel}' alt='{name}'></a>"
-                      f"<figcaption>{name}</figcaption></figure>"
-                  )
-              gallery_html.append("</div>")
-          else:
-              gallery_html.append("<i>No figures were found in <code>docs/assets/figures/</code>.</i>")
+          # ---- 3.2 /reports/ ---- (HTML files)
+          htmls = sorted([p for p in dl_dir.glob("*.html")])
+          items = []
+          for p in htmls:
+              # Copia cada HTML a /reports/ con el mismo nombre
+              dest = root / "reports" / p.name
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              dest.write_text(p.read_text(encoding="utf-8"), encoding="utf-8")
+              items.append(f"<li><a href='{dest.relative_to(root).as_posix()}' target='_blank' rel='noopener'>{html.escape(p.name)}</a></li>")
+          body = "<h1>HTML Reports</h1><p>Individual HTML reports exported by the notebook.</p>"
+          body += "<ul>" + ("".join(items) if items else "<i>No HTML reports found.</i>") + "</ul>"
+          write_page(root / "reports" / "index.html", "Reports", body)
 
-          dls = sorted([p for p in dl_dir.glob("*") if p.is_file()])
-          if dls:
-              gallery_html.append("<h3>Downloads</h3><ul>")
-              for p in dls:
-                  name = html.escape(p.name)
-                  rel  = p.relative_to(root).as_posix()
-                  gallery_html.append(f"<li><a href='{rel}'>{name}</a></li>")
-              gallery_html.append("</ul>")
+          # ---- 3.3 /data/ ---- (CSV -> table page per file)
+          csvs = sorted([p for p in dl_dir.glob("*.csv")])
+          index_items = []
+          for p in csvs:
+              df = pd.read_csv(p)
+              table_html = df.to_html(index=False)
+              page = root / "data" / (p.stem + ".html")
+              write_page(page, p.stem, f"<h1>{html.escape(p.name)}</h1><p>Source: <code>{p.relative_to(root).as_posix()}</code></p><hr>{table_html}")
+              index_items.append(f"<li><a href='{page.relative_to(root).as_posix()}'>{html.escape(p.name)}</a> &middot; rows={len(df):,} cols={df.shape[1]}</li>")
+          body = "<h1>Data (CSV)</h1><p>Each CSV is rendered as an HTML table.</p>"
+          body += "<ul>" + ("".join(index_items) if index_items else "<i>No CSV files found.</i>") + "</ul>"
+          write_page(root / "data" / "index.html", "Data", body)
 
-          inject_block = "\n".join(gallery_html) + "\n"
-
-          html_text = index.read_text(encoding="utf-8")
-          lower = html_text.lower()
-          anchor = lower.rfind("</body>")
-          if anchor != -1:
-              new_html = html_text[:anchor] + inject_block + html_text[anchor:]
-          else:
-              new_html = html_text + inject_block
-
-          index.write_text(new_html, encoding="utf-8")
-          print(f"Injected gallery with {len(figs)} figures.")
+          # ---- 3.4 Añade links en la home (si existe) ----
+          home = index
+          if home.exists():
+              html_text = home.read_text(encoding="utf-8")
+              jump = """
+          <hr>
+          <h2>Site sections</h2>
+          <ul>
+            <li><a href="figures/">Figures</a> – gallery of fairness/SHAP images</li>
+            <li><a href="reports/">Reports</a> – standalone HTML reports</li>
+            <li><a href="data/">Data</a> – CSV files rendered as tables</li>
+          </ul>
+          """
+              lower = html_text.lower()
+              anchor = lower.rfind("</body>")
+              new_html = html_text[:anchor] + jump + html_text[anchor:] if anchor != -1 else html_text + jump
+              home.write_text(new_html, encoding="utf-8")
+          print(f"Built sections: figures={len(figs)} | reports={len(htmls)} | csv={len(csvs)}")
           PY
 
       - name: Configure Pages
