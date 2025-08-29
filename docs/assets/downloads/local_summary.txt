@@ -1,0 +1,7 @@
+Explained local record
+- index in X_test: 11
+- true label: >50K
+- prediction: <=50K  |  prob=29.634%
+- base_value (log-odds): -1.566  |  base prob=17.273%
+- f(x) (log-odds): -0.865  |  prob(sigmoid): 29.634%
+- Top-10 contributions -> see CSV: local_top_contributions.csv

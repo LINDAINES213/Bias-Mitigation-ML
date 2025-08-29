@@ -1,0 +1,11 @@
+feature,transformed_value,shap,direction
+marital-status_Married-civ-spouse,1.0,0.6722594275109236,↑
+race_Black,1.0,-0.29577037078523527,↓
+sex_Female,0.0,0.2755549381869919,↑
+marital-status_Never-married,0.0,0.25144534514616024,↑
+age,-0.3372239911922333,-0.18568141869825183,↓
+capital-gain,-0.14552350385541205,-0.18232828614698945,↓
+relationship_Husband,1.0,-0.17939382943399582,↓
+education_Assoc-voc,1.0,-0.17929982959048582,↓
+education-num,0.3595478448990966,0.15912415502794472,↑
+occupation_Exec-managerial,0.0,-0.10725200960725874,↓
