@@ -106,87 +106,112 @@ jobs:
           <meta charset="utf-8">
           <title>{html.escape(title)}</title>
           <style>
-          body{{font:16px/1.4 system-ui,Segoe UI,Arial,sans-serif;max-width:1100px;margin:28px auto;padding:0 14px;color:#111}}
+          :root {{
+            --btn-bg:#0f62fe; --btn-txt:#fff; --btn-bg-2:#42be65; --btn-bg-3:#8a3ffc;
+            --border:#e8e8e8; --muted:#555;
+          }}
+          body{{font:16px/1.45 system-ui,Segoe UI,Arial,sans-serif;max-width:1100px;margin:28px auto;padding:0 14px;color:#111}}
           a{{text-decoration:none}} a:hover{{text-decoration:underline}}
           h1,h2{{margin:.4em 0}}
           .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}}
-          .card{{border:1px solid #e8e8e8;border-radius:10px;padding:10px}}
+          .card{{border:1px solid var(--border);border-radius:10px;padding:10px}}
           .card img{{width:100%;height:auto;display:block}}
-          .card .cap{{font-size:.9rem;margin-top:6px;text-align:center;color:#555;word-break:break-word}}
-          hr{{border:0;height:1px;background:#eee;margin:18px 0}}
+          .card .cap{{font-size:.9rem;margin-top:6px;text-align:center;color:var(--muted);word-break:break-word}}
+          hr{{border:0;height:1px;background:var(--border);margin:18px 0}}
           table{{border-collapse:collapse;width:100%}}
           th,td{{border:1px solid #ddd;padding:6px 8px}} th{{background:#fafafa;text-align:left}}
           .topnav{{margin-bottom:14px}} .topnav a{{margin-right:10px}}
+          .btns{{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 18px}}
+          .btn{{display:inline-block;padding:10px 14px;border-radius:10px;color:#fff;font-weight:600}}
+          .btn:hover{{opacity:.9;text-decoration:none}}
+          .btn.fig{{background:var(--btn-bg)}}
+          .btn.rep{{background:var(--btn-bg-2)}}
+          .btn.dat{{background:var(--btn-bg-3)}}
+          .pathnote{{font-size:.9rem;color:#666}}
+          .sectionTitle{{display:flex;align-items:baseline;gap:10px}}
+          .subtle{{font-size:.9rem;color:#666}}
           </style>
           <div class="topnav"><a href="../">Home</a></div>
           {body_html}
           """
               path.write_text(base, encoding="utf-8")
 
-          # --- /figures/ ---
-          figs = sorted([p for p in fig_dir.glob("*") if p.suffix.lower() in {".png",".jpg",".jpeg",".gif",".svg",".webp"}])
-          cards = []
+          # /figures/
+          img_ext = {".png",".jpg",".jpeg",".gif",".svg",".webp"}
+          figs = sorted([p for p in fig_dir.rglob("*") if p.suffix.lower() in img_ext])
+
+          cards=[]
           for p in figs:
-              rel = "../" + p.relative_to(root).as_posix()   # relativo desde /figures/
-              name = html.escape(p.name)
+              rel_from_root = p.relative_to(root).as_posix()   # e.g., assets/figures/...
+              rel = "../" + rel_from_root                      # desde /figures/
+              name = html.escape(p.relative_to(fig_dir).as_posix())  # mostrar subruta
               cards.append(f"<div class='card'><a href='{rel}' target='_blank' rel='noopener'><img src='{rel}' alt='{name}'></a><div class='cap'>{name}</div></div>")
-          body = "<h1>Figures</h1><p>Auto-generated gallery from <code>docs/assets/figures/</code>.</p>"
+
+          body = "<div class='sectionTitle'><h1>Figures</h1><span class='subtle'>Auto-generated from <code>docs/assets/figures/</code> (recursive)</span></div>"
           body += f"<div class='grid'>{''.join(cards) if cards else '<i>No figures found.</i>'}</div>"
           write_page(root / "figures" / "index.html", "Figures", body)
 
-          # --- /reports/ --- (HTML files)
-          htmls = sorted([p for p in (dl_dir.glob("*.html"))])
-          items = []
+          # /reports/
+          htmls = sorted([p for p in dl_dir.rglob("*.html")])
+          items=[]
           for p in htmls:
               dest = root / "reports" / p.name
               dest.parent.mkdir(parents=True, exist_ok=True)
-              dest.write_text(p.read_text(encoding="utf-8"), encoding="utf-8")
+              dest.write_text(p.read_text(encoding='utf-8'), encoding='utf-8')
               items.append(f"<li><a href='{p.name}' target='_blank' rel='noopener'>{html.escape(p.name)}</a></li>")
-          body = "<h1>HTML Reports</h1><p>Individual HTML reports exported by the notebook.</p>"
+          body = "<h1>HTML Reports</h1><p class='pathnote'>Source: <code>docs/assets/downloads/**/*.html</code></p>"
           body += "<ul>" + ("".join(items) if items else "<i>No HTML reports found.</i>") + "</ul>"
           write_page(root / "reports" / "index.html", "Reports", body)
 
-          # --- /data/ --- (CSV -> table page per file)
-          csvs = sorted([p for p in dl_dir.glob("*.csv")])
-          idx_items = []
+          # /data/
+          csvs = sorted([p for p in dl_dir.rglob("*.csv")])
+          index_items=[]
           for p in csvs:
-              df = pd.read_csv(p)
-              table_html = df.to_html(index=False)
+              rows = cols = "?"
+              table_html = "<i>Could not render CSV.</i>"
+              try:
+                  df = pd.read_csv(p)
+                  rows, cols = df.shape
+                  table_html = df.to_html(index=False)
+              except Exception as e:
+                  table_html = f"<p class='subtle'>Error reading CSV: {html.escape(str(e))}</p>"
               page = root / "data" / (p.stem + ".html")
-              write_page(page, p.stem, f"<h1>{html.escape(p.name)}</h1><p>Source: <code>assets/downloads/{html.escape(p.name)}</code></p><hr>{table_html}")
-              idx_items.append(f"<li><a href='{page.name}'>{html.escape(p.name)}</a> &middot; rows={len(df):,} cols={df.shape[1]}</li>")
-          body = "<h1>Data (CSV)</h1><p>Each CSV is rendered as an HTML table.</p>"
-          body += "<ul>" + ("".join(idx_items) if idx_items else "<i>No CSV files found.</i>") + "</ul>"
+              write_page(page, p.stem, f"<h1>{html.escape(p.name)}</h1><p>Source: <code>{p.relative_to(root).as_posix()}</code></p><hr>{table_html}")
+              index_items.append(f"<li><a href='{page.name}'>{html.escape(p.name)}</a> &middot; rows={rows} cols={cols}</li>")
+          body = "<h1>Data (CSV)</h1><p class='pathnote'>Each CSV is rendered as an HTML table. Source: <code>docs/assets/downloads/**/*.csv</code></p>"
+          body += "<ul>" + ("".join(index_items) if index_items else "<i>No CSV files found.</i>") + "</ul>"
           write_page(root / "data" / "index.html", "Data", body)
 
           if home.exists():
               html_text = home.read_text(encoding="utf-8")
-              top = """
+              buttons = """
           <style>
-          .site-sections{border:1px solid #e8e8e8;border-radius:10px;padding:12px;margin:14px 0;background:#fafafa}
-          .site-sections ul{margin:0 0 0 18px}
+          .site-sections{border:1px solid #e8e8e8;border-radius:10px;padding:14px;margin:16px 0;background:#fafafa}
+          .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+          .btn{display:inline-block;padding:10px 14px;border-radius:10px;color:#fff;font-weight:600;text-decoration:none}
+          .btn:hover{opacity:.9}
+          .btn.fig{background:#0f62fe}
+          .btn.rep{background:#42be65}
+          .btn.dat{background:#8a3ffc}
           </style>
           <div class="site-sections">
             <h2>Site sections</h2>
-            <ul>
-              <li><a href="figures/">Figures</a> – gallery of fairness/SHAP images</li>
-              <li><a href="reports/">Reports</a> – standalone HTML reports</li>
-              <li><a href="data/">Data</a> – CSV files rendered as tables</li>
-            </ul>
+            <div class="btnrow">
+              <a class="btn fig" href="figures/">Open Figures</a>
+              <a class="btn rep" href="reports/">Open Reports (HTML)</a>
+              <a class="btn dat" href="data/">Open Data (CSV)</a>
+            </div>
           </div>
           """
               lower = html_text.lower()
               bodystart = lower.find("<body")
               if bodystart != -1:
                   gt = lower.find(">", bodystart)
-                  if gt != -1:
-                      new_html = html_text[:gt+1] + top + html_text[gt+1:]
-                  else:
-                      new_html = top + html_text
+                  new_html = html_text[:gt+1] + buttons + html_text[gt+1:] if gt != -1 else buttons + html_text
               else:
-                  new_html = top + html_text
+                  new_html = buttons + html_text
               home.write_text(new_html, encoding="utf-8")
-          print(f"Built sections: figures={len(figs)} | reports={len(htmls)} | csv={len(csvs)}")
+          print("Built sections and injected buttons successfully.")
           PY
 
       - name: Configure Pages
